@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Finance - Frontend</title>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#98a0b3; --accent:#7c3aed; --success:#059669; --danger:#ef4444;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#071029 0%,#081226 100%);color:#e6eef8;min-height:100vh}
+    .container{max-width:1100px;margin:28px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    header h1{font-size:20px;margin:0}
+    header p{margin:0;color:var(--muted);font-size:13px}
+
+    .grid{display:grid;gap:16px}
+    .cols-3{grid-template-columns:320px 1fr 330px}
+    .cols-2{grid-template-columns:1fr 420px}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(2,6,23,0.6);}
+    .muted{color:var(--muted);font-size:13px}
+    input,select,button{font-family:inherit}
+    .form-row{display:flex;gap:8px}
+    .form-row .input{flex:1}
+    .input,select{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:inherit}
+    .btn{background:var(--accent);border:none;padding:8px 12px;border-radius:8px;color:white;cursor:pointer}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+
+    .transactions{max-height:360px;overflow:auto;margin-top:8px}
+    .tx{display:flex;justify-content:space-between;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);margin-bottom:8px}
+    .small{font-size:12px}
+    .pill{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:999px;font-size:12px}
+
+    .charts{display:flex;gap:12px}
+    .chart-card{flex:1}
+
+    .goal-bar{height:8px;background:rgba(255,255,255,0.04);border-radius:999px;overflow:hidden}
+    .goal-fill{height:100%;background:linear-gradient(90deg,var(--accent),#06b6d4)}
+
+    .toast{position:fixed;right:20px;bottom:20px;background:#06202e;padding:12px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+
+    @media (max-width: 980px){.cols-3{grid-template-columns:1fr}.charts{flex-direction:column}.container{padding:12px}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>AI Finance — Frontend</h1>
+        <p class="muted">automated categorization • predictive analytics • goals & budget alerts</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="search" placeholder="Search transactions" style="padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit" />
+        <button class="btn-ghost" id="exportCsv">Export CSV</button>
+      </div>
+    </header>
+
+    <div class="grid cols-3">
+      <!-- left: add + budgets + goals -->
+      <div class="card">
+        <h3 style="margin-top:0">Add transaction</h3>
+        <div class="muted small">Auto-categorizes based on description; teach it by editing category.</div>
+        <div style="height:12px"></div>
+        <div class="form-row">
+          <input class="input" id="txDate" type="date" />
+          <input class="input" id="txAmount" placeholder="Amount" />
+        </div>
+        <div style="height:8px"></div>
+        <input class="input" id="txDesc" placeholder="Description (e.g., Starbucks, Rent, Amazon)" />
+        <div style="height:8px"></div>
+        <select id="txCategory" class="input">
+          <option value="">(Auto categorize)</option>
+        </select>
+        <div style="height:8px"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="addTx">Add</button>
+          <button class="btn-ghost" id="clearForm">Clear</button>
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+        <h4 style="margin:0">Budgets</h4>
+        <div class="muted small">Set monthly budgets per category</div>
+        <div id="budgetsList" style="margin-top:8px"></div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+        <h4 style="margin:0">Goals</h4>
+        <div id="goalsList" style="margin-top:8px"></div>
+        <div style="height:8px"></div>
+        <button class="btn-ghost" id="addGoalBtn">+ New goal</button>
+      </div>
+
+      <!-- center: charts + transactions -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" style="display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <h3 style="margin:0">Spending Overview</h3>
+              <div class="muted small">Last 12 months • Prediction shown for next month</div>
+            </div>
+            <div style="text-align:right">
+              <div class="muted small">Pred (LR): <span id="predOverall">—</span></div>
+              <div class="muted small">MA(3): <span id="predMA">—</span></div>
+            </div>
+          </div>
+
+          <div class="charts" style="margin-top:12px">
+            <div class="chart-card">
+              <canvas id="lineChart" height="120"></canvas>
+            </div>
+            <div class="chart-card card" style="padding:8px">
+              <canvas id="pieChart" height="120"></canvas>
+              <div class="muted small" style="margin-top:8px">Tap a category to view forecast below</div>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+          <div>
+            <h4 style="margin:0">Transactions</h4>
+            <div class="muted small">Click category to reassign and teach the model</div>
+            <div class="transactions" id="txList"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0">Category Forecasts</h3>
+          <div id="catForecasts" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <!-- right: insights / activity -->
+      <div class="card">
+        <h3 style="margin:0">Insights & Alerts</h3>
+        <div id="alerts" style="margin-top:10px"></div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+        <h4 style="margin:0">Quick actions</h4>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+          <button class="btn-ghost" id="fillSample">Load sample data</button>
+          <button class="btn-ghost" id="resetAll">Reset local data</button>
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+        <div class="muted small">Tip: Tag or edit categories for transactions — the tiny classifier learns from your corrections and improves auto-categorization.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast area -->
+  <div id="toastRoot" style="position:fixed;right:20px;bottom:20px"></div>
+
+  <script>
+    // -------------------- Storage --------------------
+    const KEY = 'ai_finance_frontend_v1';
+    const defaultState = {
+      transactions: [],
+      budgets: { 'Groceries': 400, 'Rent': 1200, 'Utilities': 150, 'Dining': 150, 'Transport': 100, 'Entertainment': 100 },
+      goals: [{ id:1, name:'Emergency Fund', target:3000, saved:800, deadline:'2026-01-01' }],
+      categories: ['Groceries','Rent','Utilities','Dining','Transport','Salary','Entertainment','Health','Misc'],
+      classifier: { catCounts:{}, wordCounts:{}, total:0 }
+    };
+
+    function load(){
+      try{const raw = localStorage.getItem(KEY);return raw?JSON.parse(raw):structuredClone(defaultState)}catch(e){console.error(e);return structuredClone(defaultState)}
+    }
+    function save(s){localStorage.setItem(KEY,JSON.stringify(s))}
+
+    let state = load();
+
+    // -------------------- Tiny Classifier --------------------
+    function tokenize(s){return (s||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(/\s+/).filter(Boolean)}
+    function classifierLearn(text, category){
+      const tokens = tokenize(text);
+      const c = state.classifier;
+      c.catCounts[category] = (c.catCounts[category]||0)+1;
+      c.total = (c.total||0)+1;
+      c.wordCounts[category] = c.wordCounts[category]||{};
+      tokens.forEach(t=>c.wordCounts[category][t]=(c.wordCounts[category][t]||0)+1);
+    }
+    function classifierPredict(text){
+      const tokens = tokenize(text);
+      const c = state.classifier;
+      const cats = Object.keys(c.catCounts);
+      if(!cats.length) return 'Uncategorized';
+      let best=null,bestScore=-Infinity;
+      cats.forEach(cat=>{
+        const prior = Math.log((c.catCounts[cat]||1)/(c.total||1));
+        const wc = c.wordCounts[cat]||{};
+        const vocab = Object.keys(wc).length+1;
+        const totalWords = Object.values(wc).reduce((a,b)=>a+b,0)+vocab;
+        let score = prior;
+        tokens.forEach(t=>{const count = wc[t]||0; score += Math.log((count+1)/totalWords)})
+        if(score>bestScore){bestScore=score;best=cat}
+      })
+      return best||'Uncategorized';
+    }
+
+    // -------------------- Utils --------------------
+    function uid(){return Date.now()+Math.floor(Math.random()*1000)}
+    function fmt(n){return n?('$'+Number(n).toFixed(2)): '$0.00'}
+
+    // -------------------- CRUD actions --------------------
+    function addTransaction(tx){
+      // tx: {date, amount, description, category?}
+      const cat = tx.category||classifierPredict(tx.description||'');
+      const newTx = {...tx, id: uid(), category: cat, amount: Number(tx.amount)};
+      state.transactions.unshift(newTx);
+      // teach classifier from this labeled data
+      classifierLearn(newTx.description||'', newTx.category||'');
+      save(state); renderAll();
+      checkAlertsForCategory(newTx.category);
+      toast('Transaction added');
+    }
+
+    function updateTransactionCategory(id, newCat){
+      const tx = state.transactions.find(t=>t.id===id);
+      if(!tx) return;
+      tx.category = newCat;
+      // teach
+      classifierLearn(tx.description||'', newCat);
+      save(state); renderAll(); toast('Learned category');
+    }
+
+    function setBudget(cat, value){ state.budgets[cat]=Number(value); save(state); renderBudgets(); }
+    function addGoal(goal){ goal.id = uid(); state.goals.unshift(goal); save(state); renderGoals(); toast('Goal created') }
+
+    // -------------------- Analytics --------------------
+    function monthlySeries(){
+      // last 12 months YYYY-MM
+      const now = new Date(); const months=[];
+      for(let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(d.toISOString().slice(0,7))}
+      return months.map(m=>({month:m,total: state.transactions.filter(t=>t.date.slice(0,7)===m).reduce((a,b)=>a+b.amount,0)}));
+    }
+
+    function linearRegression(xs, ys){ if(xs.length<2) return {slope:0,intercept:ys[ys.length-1]||0}; const n=xs.length; const sumX=xs.reduce((a,b)=>a+b,0); const sumY=ys.reduce((a,b)=>a+b,0); const sumXY=xs.reduce((a,b,i)=>a+b*ys[i],0); const sumX2=xs.reduce((a,b)=>a+b*b,0); const denom = n*sumX2 - sumX*sumX || 1; const slope = (n*sumXY - sumX*sumY)/denom; const intercept = (sumY - slope*sumX)/n; return {slope,intercept}; }
+    function movingAverage(values, window=3){ if(!values.length) return 0; let sum=0, count=0; for(let i=Math.max(0, values.length-window); i<values.length;i++){sum+=values[i];count++} return sum/Math.max(1,count) }
+
+    function overallPrediction(){ const series=monthlySeries(); const xs=series.map((_,i)=>i); const ys=series.map(d=>d.total); const {slope,intercept} = linearRegression(xs,ys); const next = slope*xs.length + intercept; return {lr:Math.max(0,next), ma: movingAverage(ys,3)} }
+
+    function categoryPrediction(category){ const now=new Date(); const months=[]; for(let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(d.toISOString().slice(0,7))} const ys = months.map(m=> state.transactions.filter(t=>t.category===category && t.date.slice(0,7)===m).reduce((a,b)=>a+b.amount,0)); const xs=ys.map((_,i)=>i); const {slope,intercept}=linearRegression(xs,ys); const next = slope*xs.length + intercept; return {lr:Math.max(0,next), ma: movingAverage(ys,3), history:ys}
+    }
+
+    // -------------------- Alerts --------------------
+    function pushAlert(text){ const el = document.getElementById('alerts'); const div = document.createElement('div'); div.className='muted small'; div.style.marginBottom='8px'; div.textContent = text; el.prepend(div); }
+    function toast(text){ const root = document.getElementById('toastRoot'); const t = document.createElement('div'); t.className='toast'; t.textContent=text; root.appendChild(t); setTimeout(()=>{t.remove()},4500) }
+
+    function checkAlertsForCategory(category){ const budget = state.budgets[category]; if(!budget) return; const now = new Date(); const ym = now.toISOString().slice(0,7); const spent = state.transactions.filter(t=>t.category===category && t.date.slice(0,7)===ym).reduce((a,b)=>a+b.amount,0); if(spent>budget*0.9){ pushAlert(`Warning: ${category} at ${Math.round((spent/budget)*100)}% of monthly budget`) }}
+
+    // -------------------- Rendering --------------------
+    // charts
+    let lineChart, pieChart;
+    function renderCharts(){
+      const series = monthlySeries();
+      const labels = series.map(s=>s.month);
+      const data = series.map(s=>s.total);
+      const ctx = document.getElementById('lineChart').getContext('2d');
+      if(lineChart) lineChart.destroy();
+      lineChart = new Chart(ctx, {type:'line',data:{labels, datasets:[{label:'Total spend',data,fill:true,tension:0.2}]}, options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}}}});
+
+      // pie
+      const catTotals = {}; state.transactions.forEach(t=>catTotals[t.category]=(catTotals[t.category]||0)+t.amount);
+      const labelsP = Object.keys(catTotals);
+      const dataP = labelsP.map(l=>catTotals[l]);
+      const ctx2 = document.getElementById('pieChart').getContext('2d');
+      if(pieChart) pieChart.destroy();
+      pieChart = new Chart(ctx2,{type:'pie',data:{labels:labelsP,datasets:[{data:dataP}]}, options:{plugins:{legend:{position:'bottom'}}});
+
+      const pred = overallPrediction(); document.getElementById('predOverall').textContent = fmt(Math.round(pred.lr)); document.getElementById('predMA').textContent = fmt(Math.round(pred.ma));
+    }
+
+    function renderTransactions(filter=''){
+      const wrap = document.getElementById('txList'); wrap.innerHTML='';
+      const list = state.transactions.filter(t=> (t.description+t.category).toLowerCase().includes(filter.toLowerCase()));
+      list.forEach(t=>{
+        const row = document.createElement('div'); row.className='tx';
+        const left = document.createElement('div');
+        left.innerHTML = `<div style="font-weight:600">${t.description||'(no description)'}</div><div class='muted small'>${t.date} • <span class='pill'>${t.category}</span></div>`;
+        const right = document.createElement('div'); right.style.textAlign='right';
+        right.innerHTML = `<div style='font-weight:700'>${fmt(t.amount)}</div>`;
+        // category select
+        const sel = document.createElement('select'); sel.style.marginTop='8px'; sel.className='input';
+        const unique = Array.from(new Set([t.category,...state.categories])); unique.forEach(c=>{const o=document.createElement('option'); o.value=c; o.textContent=c; if(c===t.category) o.selected=true; sel.appendChild(o)});
+        const opt = document.createElement('option'); opt.value='Uncategorized'; opt.textContent='Uncategorized'; sel.appendChild(opt);
+        sel.onchange = ()=>{ updateTransactionCategory(t.id, sel.value) }
+        right.appendChild(sel);
+
+        row.appendChild(left); row.appendChild(right); wrap.appendChild(row);
+      })
+    }
+
+    function renderBudgets(){ const out = document.getElementById('budgetsList'); out.innerHTML=''; state.categories.forEach(c=>{ const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.marginBottom='8px'; row.innerHTML = `<div>${c}</div>`; const input = document.createElement('input'); input.value = state.budgets[c]||''; input.className='input'; input.style.width='110px'; input.onchange = ()=> setBudget(c, input.value); row.appendChild(input); out.appendChild(row) }) }
+
+    function renderGoals(){ const out = document.getElementById('goalsList'); out.innerHTML=''; state.goals.forEach(g=>{ const box = document.createElement('div'); box.style.border='1px solid rgba(255,255,255,0.03)'; box.style.padding='8px'; box.style.borderRadius='8px'; box.style.marginBottom='8px'; box.innerHTML = `<div style='display:flex;justify-content:space-between;align-items:center'><div><div style='font-weight:600'>${g.name}</div><div class='muted small'>deadline: ${g.deadline}</div></div><div>${fmt(g.saved)} / ${fmt(g.target)}</div></div><div style='height:8px;margin-top:8px' class='goal-bar'><div class='goal-fill' style='width:${Math.min(100,(g.saved/g.target)*100)}%'></div></div>`; out.appendChild(box) }) }
+
+    function renderCatForecasts(){ const out = document.getElementById('catForecasts'); out.innerHTML=''; const totals = {}; state.transactions.forEach(t=>totals[t.category]=(totals[t.category]||0)+t.amount); Object.keys(totals).forEach(cat=>{ const p = categoryPrediction(cat); const div = document.createElement('div'); div.style.display='flex'; div.style.justifyContent='space-between'; div.style.alignItems='center'; div.style.border='1px solid rgba(255,255,255,0.02)'; div.style.padding='8px'; div.style.borderRadius='8px'; div.style.marginBottom='8px'; div.innerHTML = `<div><div style='font-weight:600'>${cat}</div><div class='muted small'>Last3MA: ${fmt(Math.round(movingAverage(p.history,3)))}</div></div><div style='text-align:right'><div style='font-weight:700'>Next(LR): ${fmt(Math.round(p.lr))}</div><div class='muted small'>MA: ${fmt(Math.round(p.ma))}</div></div>`; out.appendChild(div) }) }
+
+    function renderAll(){ renderBudgets(); renderGoals(); renderCharts(); renderTransactions(document.getElementById('search').value||''); renderCatForecasts(); }
+
+    // -------------------- UI wiring --------------------
+    document.getElementById('addTx').onclick = ()=>{
+      const date = document.getElementById('txDate').value; const amount = document.getElementById('txAmount').value; const desc = document.getElementById('txDesc').value; const cat = document.getElementById('txCategory').value;
+      if(!date||!amount) return toast('Enter date and amount'); addTransaction({date,amount,description:desc,category:cat}); document.getElementById('txDate').value=''; document.getElementById('txAmount').value=''; document.getElementById('txDesc').value=''; document.getElementById('txCategory').value='';
+    }
+    document.getElementById('clearForm').onclick = ()=>{ document.getElementById('txDate').value=''; document.getElementById('txAmount').value=''; document.getElementById('txDesc').value=''; document.getElementById('txCategory').value=''; }
+
+    document.getElementById('search').oninput = (e)=> renderTransactions(e.target.value);
+    document.getElementById('addGoalBtn').onclick = ()=>{
+      const name = prompt('Goal name'); if(!name) return; const target = Number(prompt('Target amount (USD)')); if(!target) return; const deadline = prompt('Deadline (YYYY-MM-DD)')||''; addGoal({name,target,saved:0,deadline});
+    }
+
+    document.getElementById('fillSample').onclick = ()=>{ state.transactions = [
+      {id:uid(),date:'2025-06-03',amount:45.9,description:'Whole Foods - groceries',category:'Groceries'},
+      {id:uid(),date:'2025-06-01',amount:1200,description:'June Rent',category:'Rent'},
+      {id:uid(),date:'2025-06-12',amount:15.5,description:'Coffee shop',category:'Dining'},
+      {id:uid(),date:'2025-05-25',amount:60,description:'Utility bill - electricity',category:'Utilities'},
+      {id:uid(),date:'2025-05-10',amount:2000,description:'Salary - June (deposit)',category:'Salary'}
+    ]; // teach classifier on these
+      state.transactions.forEach(t=>classifierLearn(t.description,t.category)); save(state); renderAll(); toast('Sample data loaded') }
+
+    document.getElementById('resetAll').onclick = ()=>{ if(confirm('Reset all local data?')){ localStorage.removeItem(KEY); state = structuredClone(defaultState); save(state); renderAll(); toast('Data reset') }}
+
+    document.getElementById('exportCsv').onclick = ()=>{
+      const rows = [['id','date','amount','description','category']].concat(state.transactions.map(t=>[t.id,t.date,t.amount,`"${t.description||''}"`,t.category])); const csv = rows.map(r=>r.join(',')).join('\n'); const blob = new Blob([csv],{type:'text/csv'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='transactions.csv'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    // populate category select
+    function populateCategorySelect(){ const sel = document.getElementById('txCategory'); sel.innerHTML = '<option value="">(Auto categorize)</option>'; state.categories.forEach(c=>{ const o = document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o) }) }
+
+    // initial render
+    populateCategorySelect(); renderAll();
+  </script>
+</body>
+</html>
